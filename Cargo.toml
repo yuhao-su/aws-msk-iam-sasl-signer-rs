@@ -1,0 +1,29 @@
+[package]
+name = "aws-msk-iam-sasl-signer-rs"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+aws-config = { version = "1", default-features = false, features = [
+    "behavior-version-latest",
+    "rt-tokio",
+    "rustls",
+] }
+aws-credential-types = { version = "1", default-features = false, features = [
+    "hardcoded-credentials",
+] }
+aws-sdk-sts ={ version = "1", default-features = false, features = [
+    "rt-tokio",
+    "rustls",
+] }
+aws-sigv4 = { version = "1", features = ["sign-http"] }
+aws-types = "1"
+base64 = "0.22"
+chrono = "0.4"
+thiserror = "1"
+url = "2"
+
+[dev-dependencies]
+tokio ={ version = "1", features = ["macros"] }
