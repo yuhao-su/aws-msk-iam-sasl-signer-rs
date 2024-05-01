@@ -118,7 +118,9 @@ async fn load_credentials_from_role_arn(
     role_arn: String,
     sts_session_name: String,
 ) -> SignerResult<Credentials> {
+    let config = aws_config::from_env().region(region.clone()).load().await;
     let role_provider = AssumeRoleProvider::builder(role_arn)
+        .configure(&config)
         .region(region)
         .session_name(sts_session_name)
         .build()
