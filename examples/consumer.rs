@@ -1,4 +1,5 @@
 use std::thread;
+use std::time::Duration;
 
 use aws_config::Region;
 use aws_msk_iam_sasl_signer_rs::generate_auth_token;
@@ -6,6 +7,7 @@ use rdkafka::client::OAuthToken;
 use rdkafka::consumer::{Consumer, ConsumerContext, StreamConsumer};
 use rdkafka::{ClientConfig, ClientContext, Message};
 use tokio::runtime::Handle;
+use tokio::time::timeout;
 use tracing_subscriber;
 
 const REGION: &str = "us-east-2";
@@ -35,9 +37,12 @@ impl ClientContext for IamConsumerContext {
         let region = self.region.clone();
         let handle = self.rt.clone();
         let (token, expiration_time_ms) = {
-            let handle =
-                thread::spawn(move || handle.block_on(generate_auth_token(region.clone())));
-            handle.join().unwrap()?
+            let handle = thread::spawn(move || {
+                handle.block_on(async {
+                    timeout(Duration::from_secs(10), generate_auth_token(region.clone())).await
+                })
+            });
+            handle.join().unwrap()??
         };
         Ok(OAuthToken {
             token,
