@@ -1,0 +1,3 @@
+Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+
+Rewritten in Rust from https://github.com/aws/aws-msk-iam-sasl-signer-go. Copyright RisingWave Labs. All Rights Reserved.
