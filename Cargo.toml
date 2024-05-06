@@ -1,5 +1,5 @@
 [package]
-name = "aws-msk-iam-sasl-signer-rs"
+name = "aws-msk-iam-sasl-signer"
 version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"

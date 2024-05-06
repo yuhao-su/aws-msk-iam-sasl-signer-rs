@@ -2,7 +2,7 @@ use std::thread;
 use std::time::Duration;
 
 use aws_config::Region;
-use aws_msk_iam_sasl_signer_rs::generate_auth_token;
+use aws_msk_iam_sasl_signer::generate_auth_token;
 use rdkafka::client::OAuthToken;
 use rdkafka::consumer::{Consumer, ConsumerContext, StreamConsumer};
 use rdkafka::{ClientConfig, ClientContext, Message};
@@ -67,7 +67,7 @@ async fn main() {
 
     let consumer: StreamConsumer<IamConsumerContext> = config.create_with_context(context).unwrap();
 
-    // consumer.recv().now_or_never().unwrap().unwrap();
+    // assert!(consumer.recv().now_or_never().is_none());
     // let partition_list = {
     //     let mut list = TopicPartitionList::new();
     //     let meta_data = consumer

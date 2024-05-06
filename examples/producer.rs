@@ -2,7 +2,7 @@ use std::thread;
 use std::time::Duration;
 
 use aws_config::Region;
-use aws_msk_iam_sasl_signer_rs::generate_auth_token;
+use aws_msk_iam_sasl_signer::generate_auth_token;
 use rdkafka::client::OAuthToken;
 use rdkafka::producer::{FutureProducer, FutureRecord, ProducerContext};
 use rdkafka::{ClientConfig, ClientContext};

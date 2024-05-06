@@ -101,10 +101,6 @@ async fn load_credentials_from_profile(
         .load()
         .await;
 
-    // if err != nil {
-    // 	return nil, fmt.Errorf("unable to load SDK config: %w", err)
-    // }
-
     load_credentials_from_credentials_provider(config.credentials_provider().unwrap()).await
 }
 
