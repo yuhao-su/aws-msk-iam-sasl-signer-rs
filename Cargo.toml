@@ -1,8 +1,15 @@
 [package]
 name = "aws-msk-iam-sasl-signer"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
 license = "Apache-2.0"
+authors = ["Yuhao Su<yuhaosu@outlook.com>"]
+description = "AWS MSK IAM SASL Signer"
+repository = "https://github.com/yuhao-su/aws-msk-iam-sasl-signer-rs"
+homepage = "https://github.com/yuhao-su/aws-msk-iam-sasl-signer-rs"
+readme = "README.md"
+keywords = ["aws", "msk", "kafka", "sasl", "iam"]
+categories = ["authentication"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
