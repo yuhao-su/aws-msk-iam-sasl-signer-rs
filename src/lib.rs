@@ -33,6 +33,7 @@ macro_rules! ENDPOINT_URL_TEMPLATE {
     };
 }
 /// Indicates whether credentials should be debugged
+#[cfg(debug_assertions)]
 const AWS_DEBUG_CREDS: bool = false;
 /// Libray package version
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -232,7 +233,7 @@ fn base64_encode(signed_url: Url) -> String {
 
 // Add user agent to the signed url
 fn add_user_agent(signed_url: &mut Url) {
-    let user_agent = format!("{LIB_NAME}/{VERSION}");
+    let user_agent = format!("{LIB_NAME}-rs/{VERSION}");
     signed_url
         .query_pairs_mut()
         .append_pair(USER_AGENT_KEY, &user_agent);

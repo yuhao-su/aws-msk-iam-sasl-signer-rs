@@ -89,7 +89,7 @@ fn verify_auth_token(token: String, expiry_ms: i64, cred: &Credentials) {
     let decoded_signed_url = String::from_utf8(decoded_signed_url_bytes).unwrap();
 
     let parsed_url = Url::parse(&decoded_signed_url).unwrap();
-    dbg!(&parsed_url);
+
     assert_eq!(parsed_url.scheme(), "https");
     assert_eq!(parsed_url.host_str(), Some(TEST_ENDPOINT));
 
