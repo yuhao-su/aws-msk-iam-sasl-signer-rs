@@ -1,4 +1,4 @@
-# AWS MSK IAM SASL Signer for Go
+# AWS MSK IAM SASL Signer for Rust
 
 [![CI status](https://github.com/yuhao-su/aws-msk-iam-sasl-signer-rs/actions/workflows/ci.yaml/badge.svg?branch=main)](https://github.com/yuhao-su/aws-msk-iam-sasl-signer-rs/actions/workflows/ci.yaml)
 [![Apache V2 License](https://img.shields.io/badge/license-Apache%20V2-blue.svg)](./LICENSE)
