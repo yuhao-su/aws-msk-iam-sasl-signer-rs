@@ -33,6 +33,7 @@ macro_rules! ENDPOINT_URL_TEMPLATE {
     };
 }
 /// Indicates whether credentials should be debugged
+#[cfg(debug_assertions)]
 const AWS_DEBUG_CREDS: bool = false;
 /// Libray package version
 const VERSION: &str = env!("CARGO_PKG_VERSION");
