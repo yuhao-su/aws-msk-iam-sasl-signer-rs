@@ -68,8 +68,9 @@ async fn main() {
     let consumer: StreamConsumer<IamConsumerContext> = config.create_with_context(context).unwrap();
 
     // Uncomment the following code to get the partition list and assign the consumer to the partitions.
+    //
     // Please note that it's necessary to call `consumer.recv().now_or_never()` to refresh the OAUTHBEARER token
-    // before calling `consumer.fetch_metadata()`.
+    // before calling `consumer.fetch_metadata()` here.
     //
     // > Note that before any SASL/OAUTHBEARER broker connection can succeed the application must call rd_kafka_oauthbearer_set_token()
     // > once – either directly or, more typically, by invoking either rd_kafka_poll(), rd_kafka_consumer_poll(), rd_kafka_queue_poll(),
