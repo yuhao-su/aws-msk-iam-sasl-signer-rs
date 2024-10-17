@@ -68,7 +68,7 @@ async fn main() {
     let consumer: StreamConsumer<IamConsumerContext> = config.create_with_context(context).unwrap();
 
     // Uncomment the following code to get the partition list and assign the consumer to the partitions.
-    // Please note that it's necessary to call `consumer.recv().now_or_never()` to refresh the OAUTHBEARER token 
+    // Please note that it's necessary to call `consumer.recv().now_or_never()` to refresh the OAUTHBEARER token
     // before calling `consumer.fetch_metadata()`.
     // See https://docs.confluent.io/platform/current/clients/librdkafka/html/rdkafka_8h.html#a988395722598f63396d7a1bedb22adaf
     // for details.
