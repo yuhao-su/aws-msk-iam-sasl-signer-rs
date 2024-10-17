@@ -67,7 +67,7 @@ async fn main() {
 
     let consumer: StreamConsumer<IamConsumerContext> = config.create_with_context(context).unwrap();
 
-    // Uncomment the following code to get the partition list and assign the consumer to the partitions.
+    // Uncomment the following code to get the partition list and assign the to the consumer.
     //
     // Please note that it's necessary to call `consumer.recv().now_or_never()` to refresh the OAUTHBEARER token
     // before calling `consumer.fetch_metadata()` here.
