@@ -4,6 +4,7 @@ use std::time::Duration;
 use aws_config::Region;
 use aws_msk_iam_sasl_signer::generate_auth_token;
 use rdkafka::client::OAuthToken;
+use rdkafka::producer::future_producer::Delivery;
 use rdkafka::producer::{FutureProducer, FutureRecord, ProducerContext};
 use rdkafka::{ClientConfig, ClientContext};
 use tokio::runtime::Handle;
@@ -82,7 +83,11 @@ async fn main() {
         timestamp: None,
         headers: None,
     };
-    let (partition, offset) = producer
+    let Delivery {
+        partition,
+        offset,
+        timestamp: _,
+    } = producer
         .send(test_record, Duration::from_secs(5))
         .await
         .unwrap();

@@ -34,7 +34,7 @@ thiserror = "1"
 url = "2"
 
 [dev-dependencies]
-rdkafka ={ version = "0.36", features = [
+rdkafka ={ version = "0.39", features = [
     "cmake-build", "ssl"
 ] }
 
