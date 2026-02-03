@@ -9,7 +9,7 @@
 add the following to your `Cargo.toml`:
 ```toml
 [dependencies]
-aws-msk-iam-sasl-signer = "1.0.0"
+aws-msk-iam-sasl-signer = "1.0.1"
 ```
 
 ## Example
