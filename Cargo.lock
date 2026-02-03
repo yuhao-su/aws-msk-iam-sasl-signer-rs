@@ -100,7 +100,7 @@ dependencies = [
 
 [[package]]
 name = "aws-msk-iam-sasl-signer"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "aws-config",
  "aws-credential-types",
