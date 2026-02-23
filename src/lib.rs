@@ -150,7 +150,8 @@ async fn construct_auth_token(
         SignerError::ConstructAuthToken(format!("failed to build request for signing: {e}"))
     })?;
 
-    sign_url(&mut url, region, credentials).map_err(|e| {
+    let ttl_secs = compute_ttl_secs(&credentials);
+    sign_url(&mut url, region, credentials, ttl_secs).map_err(|e| {
         SignerError::ConstructAuthToken(format!("failed to sign request with aws sig v4: {e}"))
     })?;
 
@@ -172,8 +173,28 @@ fn build_url(endpoint_url: &str) -> Result<Url, String> {
     Ok(url)
 }
 
+/// Computes TTL in seconds for the presigned URL, factoring in credential expiration
+/// so that the MSK token does not outlive the credentials (e.g. from AssumeRole).
+fn compute_ttl_secs(credentials: &Credentials) -> u64 {
+    let max_secs = DEFAULT_EXPIRY_SECONDS as u64;
+    match credentials.expiry() {
+        Some(exp) => {
+            let now = SystemTime::now();
+            let remaining = exp.duration_since(now).unwrap_or(Duration::ZERO);
+            let remaining_secs = remaining.as_secs();
+            remaining_secs.min(max_secs).max(1)
+        }
+        None => max_secs,
+    }
+}
+
 // Sign url with aws sig v4.
-fn sign_url(url: &mut Url, region: Region, credentials: Credentials) -> Result<(), String> {
+fn sign_url(
+    url: &mut Url,
+    region: Region,
+    credentials: Credentials,
+    expires_in_secs: u64,
+) -> Result<(), String> {
     use aws_sigv4::http_request::{
         sign, SignableBody, SignableRequest, SignatureLocation, SigningSettings,
     };
@@ -181,7 +202,7 @@ fn sign_url(url: &mut Url, region: Region, credentials: Credentials) -> Result<(
 
     let mut signing_settings = SigningSettings::default();
     signing_settings.signature_location = SignatureLocation::QueryParams;
-    signing_settings.expires_in = Some(Duration::from_secs(DEFAULT_EXPIRY_SECONDS as u64));
+    signing_settings.expires_in = Some(Duration::from_secs(expires_in_secs));
     let identity = credentials.into();
     let signing_params = v4::SigningParams::builder()
         .identity(&identity)
@@ -212,17 +233,24 @@ fn sign_url(url: &mut Url, region: Region, credentials: Credentials) -> Result<(
 
 // Parses the URL and gets the expiration time in millis associated with the signed url
 fn get_expiration_time_ms(signed_url: &Url) -> Result<i64, String> {
-    let (_name, value) = &signed_url
+    let date_value = signed_url
         .query_pairs()
         .find(|(name, _value)| name == "X-Amz-Date")
-        .unwrap_or_else(|| ("".into(), "".into()));
+        .map(|(_, v)| v.to_string())
+        .ok_or("missing 'X-Amz-Date' in signed url")?;
 
-    let date_time = NaiveDateTime::parse_from_str(value, "%Y%m%dT%H%M%SZ")
-        .map_err(|_e| format!("failed to parse 'X-Amz-Date' param {value} from signed url"))?;
+    let date_time = NaiveDateTime::parse_from_str(&date_value, "%Y%m%dT%H%M%SZ")
+        .map_err(|_e| format!("failed to parse 'X-Amz-Date' param {date_value} from signed url"))?;
 
     let signing_time_ms = date_time.and_utc().timestamp_millis();
 
-    Ok(signing_time_ms + DEFAULT_EXPIRY_SECONDS * 1000)
+    let expires_secs: i64 = signed_url
+        .query_pairs()
+        .find(|(name, _value)| name == "X-Amz-Expires")
+        .and_then(|(_, v)| v.parse().ok())
+        .unwrap_or(DEFAULT_EXPIRY_SECONDS);
+
+    Ok(signing_time_ms + expires_secs * 1000)
 }
 
 // Base64 encode with raw url encoding.

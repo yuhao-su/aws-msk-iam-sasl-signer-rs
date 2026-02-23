@@ -1,6 +1,6 @@
 use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use chrono::Utc;
-use std::{borrow::Cow, collections::HashMap, env};
+use std::{borrow::Cow, collections::HashMap, env, time::Duration as StdDuration, time::SystemTime};
 
 use super::*;
 
@@ -82,7 +82,37 @@ async fn test_generate_auth_token_with_credentials_provider() {
     verify_auth_token(token, expiry_ms, &mock_creds);
 }
 
+/// When credentials expire soon (e.g. from AssumeRole), the MSK token TTL must not exceed
+/// credential lifetime so the token is not used with expired credentials.
+#[tokio::test]
+async fn test_auth_token_ttl_respects_credential_expiration() {
+    let ttl_secs = 10i64;
+    let expires_at = SystemTime::now() + StdDuration::from_secs(ttl_secs as u64);
+    let expiring_creds = Credentials::builder()
+        .access_key_id("EXPIRING-ACCESS-KEY")
+        .secret_access_key("EXPIRING-SECRET-KEY")
+        .session_token("EXPIRING-SESSION-TOKEN")
+        .expiry(expires_at)
+        .provider_name("test")
+        .build();
+
+    let (token, expiry_ms) = construct_auth_token(TEST_REGION, expiring_creds.clone())
+        .await
+        .unwrap();
+
+    verify_auth_token_with_expected_ttl(token, expiry_ms, &expiring_creds, Some(ttl_secs));
+}
+
 fn verify_auth_token(token: String, expiry_ms: i64, cred: &Credentials) {
+    verify_auth_token_with_expected_ttl(token, expiry_ms, cred, None);
+}
+
+fn verify_auth_token_with_expected_ttl(
+    token: String,
+    expiry_ms: i64,
+    cred: &Credentials,
+    expected_ttl_secs: Option<i64>,
+) {
     assert_ne!(expiry_ms, 0);
 
     let decoded_signed_url_bytes = BASE64_URL_SAFE_NO_PAD.decode(token).unwrap();
@@ -103,7 +133,18 @@ fn verify_auth_token(token: String, expiry_ms: i64, cred: &Credentials) {
         params.get("X-Amz-Algorithm"),
         Some(&Cow::Borrowed("AWS4-HMAC-SHA256"))
     );
-    assert_eq!(params.get("X-Amz-Expires"), Some(&Cow::Borrowed("900")));
+    let ttl_in_url = params.get("X-Amz-Expires").unwrap().parse::<i64>().unwrap();
+    if let Some(expected) = expected_ttl_secs {
+        // Allow up to 1s tolerance (e.g. between creating expiry and signing)
+        assert!(
+            ttl_in_url <= expected && ttl_in_url >= (expected - 1).max(1),
+            "X-Amz-Expires should be at most {} and at least 1, got {}",
+            expected,
+            ttl_in_url
+        );
+    } else {
+        assert_eq!(params.get("X-Amz-Expires"), Some(&Cow::Borrowed("900")));
+    }
     assert_eq!(
         params.get("X-Amz-Security-Token").cloned(),
         cred.session_token().map(|token| Cow::Borrowed(token))
