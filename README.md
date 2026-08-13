@@ -1,3 +1,6 @@
+
+</think>
+
 # AWS MSK IAM SASL Signer for Rust
 
 [![CI status](https://github.com/yuhao-su/aws-msk-iam-sasl-signer-rs/actions/workflows/ci.yaml/badge.svg?branch=main)](https://github.com/yuhao-su/aws-msk-iam-sasl-signer-rs/actions/workflows/ci.yaml)
@@ -13,7 +16,7 @@ aws-msk-iam-sasl-signer = "1.0.1"
 ```
 
 ## Example
-check the [producer example](./examples/consumer.rs) and [consumer example](./examples/producer.rs) for more details.
+check the [producer example](./examples/producer.rs) and [consumer example](./examples/consumer.rs) for more details.
 
 ## License
 This library is licensed under the [Apache 2.0 License](./LICENSE).
