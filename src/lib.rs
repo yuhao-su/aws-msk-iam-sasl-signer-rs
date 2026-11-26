@@ -150,7 +150,9 @@ async fn construct_auth_token(
         SignerError::ConstructAuthToken(format!("failed to build request for signing: {e}"))
     })?;
 
-    sign_url(&mut url, region, credentials).map_err(|e| {
+    let now = SystemTime::now();
+    let expires_in = token_expires_in(&credentials, now)?;
+    sign_url(&mut url, region, credentials, now, expires_in).map_err(|e| {
         SignerError::ConstructAuthToken(format!("failed to sign request with aws sig v4: {e}"))
     })?;
 
@@ -172,8 +174,34 @@ fn build_url(endpoint_url: &str) -> Result<Url, String> {
     Ok(url)
 }
 
+// A token signed with temporary credentials stops working when they expire, so its lifetime is
+// capped by the credentials' remaining lifetime.
+fn token_expires_in(credentials: &Credentials, now: SystemTime) -> SignerResult<Duration> {
+    let default_expires_in = Duration::from_secs(DEFAULT_EXPIRY_SECONDS as u64);
+    let Some(credentials_expiry) = credentials.expiry() else {
+        return Ok(default_expires_in);
+    };
+    // `X-Amz-Expires` is in whole seconds; round down so the token never outlives the credentials.
+    let remaining_secs = credentials_expiry
+        .duration_since(now)
+        .map(|remaining| remaining.as_secs())
+        .unwrap_or(0);
+    if remaining_secs == 0 {
+        return Err(SignerError::ConstructAuthToken(
+            "credentials have expired or expire within 1 second".to_string(),
+        ));
+    }
+    Ok(default_expires_in.min(Duration::from_secs(remaining_secs)))
+}
+
 // Sign url with aws sig v4.
-fn sign_url(url: &mut Url, region: Region, credentials: Credentials) -> Result<(), String> {
+fn sign_url(
+    url: &mut Url,
+    region: Region,
+    credentials: Credentials,
+    time: SystemTime,
+    expires_in: Duration,
+) -> Result<(), String> {
     use aws_sigv4::http_request::{
         sign, SignableBody, SignableRequest, SignatureLocation, SigningSettings,
     };
@@ -181,13 +209,13 @@ fn sign_url(url: &mut Url, region: Region, credentials: Credentials) -> Result<(
 
     let mut signing_settings = SigningSettings::default();
     signing_settings.signature_location = SignatureLocation::QueryParams;
-    signing_settings.expires_in = Some(Duration::from_secs(DEFAULT_EXPIRY_SECONDS as u64));
+    signing_settings.expires_in = Some(expires_in);
     let identity = credentials.into();
     let signing_params = v4::SigningParams::builder()
         .identity(&identity)
         .region(region.as_ref())
         .name(SIGNING_NAME)
-        .time(SystemTime::now())
+        .time(time)
         .settings(signing_settings)
         .build()
         .map_err(|e| format!("failed to build signing parameters: {e}"))?;
@@ -212,17 +240,25 @@ fn sign_url(url: &mut Url, region: Region, credentials: Credentials) -> Result<(
 
 // Parses the URL and gets the expiration time in millis associated with the signed url
 fn get_expiration_time_ms(signed_url: &Url) -> Result<i64, String> {
-    let (_name, value) = &signed_url
-        .query_pairs()
-        .find(|(name, _value)| name == "X-Amz-Date")
-        .unwrap_or_else(|| ("".into(), "".into()));
+    let query_param = |key: &str| {
+        signed_url
+            .query_pairs()
+            .find(|(name, _value)| name == key)
+            .map(|(_name, value)| value)
+            .unwrap_or_default()
+    };
 
-    let date_time = NaiveDateTime::parse_from_str(value, "%Y%m%dT%H%M%SZ")
-        .map_err(|_e| format!("failed to parse 'X-Amz-Date' param {value} from signed url"))?;
-
+    let date = query_param("X-Amz-Date");
+    let date_time = NaiveDateTime::parse_from_str(&date, "%Y%m%dT%H%M%SZ")
+        .map_err(|_e| format!("failed to parse 'X-Amz-Date' param {date} from signed url"))?;
     let signing_time_ms = date_time.and_utc().timestamp_millis();
 
-    Ok(signing_time_ms + DEFAULT_EXPIRY_SECONDS * 1000)
+    let expires = query_param("X-Amz-Expires");
+    let expires_secs: i64 = expires
+        .parse()
+        .map_err(|_e| format!("failed to parse 'X-Amz-Expires' param {expires} from signed url"))?;
+
+    Ok(signing_time_ms + expires_secs * 1000)
 }
 
 // Base64 encode with raw url encoding.
