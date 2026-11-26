@@ -1,111 +1,44 @@
-use std::thread;
-use std::time::Duration;
+//! Prints the messages of a topic on an MSK cluster with IAM access control.
+//!
+//! ```sh
+//! AWS_REGION=us-east-1 cargo run --example consumer -- <bootstrap-servers> <topic> [group-id]
+//! ```
 
-use aws_config::Region;
-use aws_msk_iam_sasl_signer::generate_auth_token;
-use rdkafka::client::OAuthToken;
-use rdkafka::consumer::{Consumer, ConsumerContext, StreamConsumer};
-use rdkafka::{ClientConfig, ClientContext, Message};
-use tokio::runtime::Handle;
-use tokio::time::timeout;
-use tracing_subscriber;
+mod common;
 
-const REGION: &str = "us-east-2";
-const KAFKA_BROKER: &str = "your-broker-address";
-const KAFKA_TOPIC: &str = "your-topic-name";
+use std::error::Error;
 
-struct IamConsumerContext {
-    region: Region,
-    rt: Handle,
-}
-
-impl IamConsumerContext {
-    fn new(region: Region, rt: Handle) -> Self {
-        Self { region, rt }
-    }
-}
-
-impl ConsumerContext for IamConsumerContext {}
-
-impl ClientContext for IamConsumerContext {
-    const ENABLE_REFRESH_OAUTH_TOKEN: bool = true;
-
-    fn generate_oauth_token(
-        &self,
-        _oauthbearer_config: Option<&str>,
-    ) -> Result<OAuthToken, Box<dyn std::error::Error>> {
-        let region = self.region.clone();
-        let handle = self.rt.clone();
-        let (token, expiration_time_ms) = {
-            let handle = thread::spawn(move || {
-                handle.block_on(async {
-                    timeout(Duration::from_secs(10), generate_auth_token(region.clone())).await
-                })
-            });
-            handle.join().unwrap()??
-        };
-        Ok(OAuthToken {
-            token,
-            principal_name: "".to_string(),
-            lifetime_ms: expiration_time_ms,
-        })
-    }
-}
+use common::{client_config, MskIamContext};
+use rdkafka::consumer::{Consumer, StreamConsumer};
+use rdkafka::Message;
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Box<dyn Error>> {
     tracing_subscriber::fmt::init();
-    let mut config = ClientConfig::new();
+    let mut args = std::env::args().skip(1);
+    let (Some(bootstrap_servers), Some(topic)) = (args.next(), args.next()) else {
+        return Err("usage: consumer <bootstrap-servers> <topic> [group-id]".into());
+    };
+    let group_id = args
+        .next()
+        .unwrap_or_else(|| "aws-msk-iam-sasl-signer-example".to_string());
 
-    config.set("bootstrap.servers", KAFKA_BROKER);
-    config.set("security.protocol", "SASL_SSL");
-    config.set("sasl.mechanism", "OAUTHBEARER");
-    config.set("group.id", "test-aws-msk-iam-sasl-signer-rs");
+    let consumer: StreamConsumer<MskIamContext> = client_config(&bootstrap_servers)
+        .set("group.id", &group_id)
+        .set("auto.offset.reset", "earliest")
+        .create_with_context(MskIamContext::from_env().await)?;
 
-    let region = Region::from_static(REGION);
-    let context = IamConsumerContext::new(region, Handle::current());
-
-    let consumer: StreamConsumer<IamConsumerContext> = config.create_with_context(context).unwrap();
-
-    // Uncomment the following code to get the partition list and assign the partitions to the consumer.
-    //
-    // Please note that it's necessary to call `consumer.recv().now_or_never()` to refresh the OAUTHBEARER token
-    // before calling `consumer.fetch_metadata()` here.
-    //
-    // > Note that before any SASL/OAUTHBEARER broker connection can succeed the application must call rd_kafka_oauthbearer_set_token()
-    // > once – either directly or, more typically, by invoking either rd_kafka_poll(), rd_kafka_consumer_poll(), rd_kafka_queue_poll(),
-    // > etc, in order to cause retrieval of an initial token to occur.
-    // See https://docs.confluent.io/platform/current/clients/librdkafka/html/rdkafka_8h.html#a988395722598f63396d7a1bedb22adaf
-    // for details.
-    //
-    // assert!(consumer.recv().now_or_never().is_none());
-    // let partition_list = {
-    //     let mut list = TopicPartitionList::new();
-    //     let meta_data = consumer
-    //         .fetch_metadata(Some(KAFKA_TOPIC), Duration::from_secs(10))
-    //         .unwrap();
-    //     let topic = meta_data.topics().first().unwrap();
-    //     for partition in topic.partitions() {
-    //         list.add_partition(KAFKA_TOPIC, partition.id());
-    //     }
-    //     list
-    // };
-    // consumer.assign(&partition_list).unwrap();
-
-    consumer.subscribe(&[KAFKA_TOPIC]).unwrap();
-
+    // librdkafka fetches the first token when the client is polled (here, by `recv`). Broker calls
+    // made before that, such as `fetch_metadata`, time out; poll once first if you need them, e.g.
+    // with `consumer.recv().now_or_never()`.
+    consumer.subscribe(&[&topic])?;
     loop {
-        let msg = consumer.recv().await;
-        match msg {
-            Ok(msg) => {
-                println!(
-                    "Received message: {}",
-                    String::from_utf8_lossy(msg.payload().unwrap_or(&[]))
-                )
-            }
-            Err(e) => {
-                println!("Received error: {}", e)
-            }
+        match consumer.recv().await {
+            Ok(message) => println!(
+                "Received: {}",
+                String::from_utf8_lossy(message.payload().unwrap_or_default())
+            ),
+            Err(e) => eprintln!("Error: {e}"),
         }
     }
 }

@@ -1,3 +1,9 @@
+//! Generates auth tokens for the SASL/OAUTHBEARER mechanism of Kafka clients connecting to
+//! [Amazon MSK clusters with IAM access control]. The [examples] use them with rust-rdkafka.
+//!
+//! [Amazon MSK clusters with IAM access control]: https://docs.aws.amazon.com/msk/latest/developerguide/iam-access-control.html
+//! [examples]: https://github.com/yuhao-su/aws-msk-iam-sasl-signer-rs/tree/main/examples
+
 mod error;
 #[cfg(test)]
 mod test;
@@ -40,15 +46,18 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 type SignerResult<T> = Result<T, SignerError>;
 
-/// [`generate_auth_token`] generates base64 encoded signed url as auth token from default credentials.
-/// Loads the IAM credentials from default credentials provider chain.
+/// Generates an auth token with credentials from the default credential provider chain.
+///
+/// Returns the token and its expiry time in milliseconds since the Unix epoch.
 pub async fn generate_auth_token(region: Region) -> SignerResult<(String, i64)> {
     let credentials = load_default_credentials(region.clone()).await?;
 
     construct_auth_token(region, credentials).await
 }
 
-/// [`generate_auth_token_from_profile`] generates base64 encoded signed url as auth token by loading IAM credentials from an AWS named profile.
+/// Generates an auth token with credentials from the AWS named profile `aws_profile`.
+///
+/// Returns the token and its expiry time in milliseconds since the Unix epoch.
 pub async fn generate_auth_token_from_profile(
     region: Region,
     aws_profile: String,
@@ -58,7 +67,9 @@ pub async fn generate_auth_token_from_profile(
     construct_auth_token(region, credentials).await
 }
 
-/// [`generate_auth_token_from_role`] generates base64 encoded signed url as auth token by loading IAM credentials from an aws role Arn
+/// Generates an auth token with credentials from assuming the role `role_arn`.
+///
+/// Returns the token and its expiry time in milliseconds since the Unix epoch.
 pub async fn generate_auth_token_from_role(
     region: Region,
     role_arn: String,
@@ -73,8 +84,9 @@ pub async fn generate_auth_token_from_role(
     construct_auth_token(region, credentials).await
 }
 
-/// [`generate_auth_token_from_credentials_provider`] generates base64 encoded signed url as auth token by loading IAM credentials
-/// from an aws credentials provider
+/// Generates an auth token with credentials from `credentials_provider`.
+///
+/// Returns the token and its expiry time in milliseconds since the Unix epoch.
 pub async fn generate_auth_token_from_credentials_provider(
     region: Region,
     credentials_provider: SharedCredentialsProvider,
