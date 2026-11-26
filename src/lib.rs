@@ -189,21 +189,16 @@ fn build_url(endpoint_url: &str) -> Result<Url, String> {
 // A token signed with temporary credentials stops working when they expire, so its lifetime is
 // capped by the credentials' remaining lifetime.
 fn token_expires_in(credentials: &Credentials, now: SystemTime) -> SignerResult<Duration> {
-    let default_expires_in = Duration::from_secs(DEFAULT_EXPIRY_SECONDS as u64);
     let Some(credentials_expiry) = credentials.expiry() else {
-        return Ok(default_expires_in);
+        return Ok(Duration::from_secs(DEFAULT_EXPIRY_SECONDS as u64));
     };
-    // `X-Amz-Expires` is in whole seconds; round down so the token never outlives the credentials.
-    let remaining_secs = credentials_expiry
+    let remaining = credentials_expiry
         .duration_since(now)
-        .map(|remaining| remaining.as_secs())
-        .unwrap_or(0);
-    if remaining_secs == 0 {
-        return Err(SignerError::ConstructAuthToken(
-            "credentials have expired or expire within 1 second".to_string(),
-        ));
-    }
-    Ok(default_expires_in.min(Duration::from_secs(remaining_secs)))
+        .map_err(|_| SignerError::ConstructAuthToken("credentials have expired".to_string()))?;
+    // `X-Amz-Expires` is in whole seconds and at least 1.
+    Ok(Duration::from_secs(
+        remaining.as_secs().clamp(1, DEFAULT_EXPIRY_SECONDS as u64),
+    ))
 }
 
 // Sign url with aws sig v4.

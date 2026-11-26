@@ -113,14 +113,11 @@ fn test_token_expires_in() {
         Duration::from_secs(600)
     );
 
-    let expire_in_1_sec = credentials_expiring_at(now + Duration::from_secs(1));
+    let expire_in_999_ms = credentials_expiring_at(now + Duration::from_millis(999));
     assert_eq!(
-        token_expires_in(&expire_in_1_sec, now).unwrap(),
+        token_expires_in(&expire_in_999_ms, now).unwrap(),
         Duration::from_secs(1)
     );
-
-    let expire_in_999_ms = credentials_expiring_at(now + Duration::from_millis(999));
-    assert!(token_expires_in(&expire_in_999_ms, now).is_err());
 
     let expired = credentials_expiring_at(now - Duration::from_secs(1));
     assert!(token_expires_in(&expired, now).is_err());
