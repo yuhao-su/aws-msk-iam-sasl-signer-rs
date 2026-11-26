@@ -43,7 +43,7 @@ async fn test_construct_auth_token() {
         .await
         .unwrap();
 
-    verify_auth_token(token, expiry_ms, &mock_creds);
+    assert_eq!(verify_auth_token(token, expiry_ms, &mock_creds), 900);
 }
 
 #[tokio::test]
@@ -60,7 +60,7 @@ async fn test_generate_auth_token() {
 
     let (token, expiry_ms) = generate_auth_token(TEST_REGION).await.unwrap();
 
-    verify_auth_token(token, expiry_ms, &mock_creds);
+    assert_eq!(verify_auth_token(token, expiry_ms, &mock_creds), 900);
 
     // Clean-up env variables.
     env::remove_var("AWS_ACCESS_KEY_ID");
@@ -79,10 +79,91 @@ async fn test_generate_auth_token_with_credentials_provider() {
             .await
             .unwrap();
 
-    verify_auth_token(token, expiry_ms, &mock_creds);
+    assert_eq!(verify_auth_token(token, expiry_ms, &mock_creds), 900);
 }
 
-fn verify_auth_token(token: String, expiry_ms: i64, cred: &Credentials) {
+#[test]
+fn test_token_expires_in() {
+    let now = SystemTime::UNIX_EPOCH + Duration::from_secs(1_800_000_000);
+    let credentials_expiring_at = |expiry: SystemTime| {
+        Credentials::new(
+            "MOCK-ACCESS-KEY",
+            "MOCK-SECRET-KEY",
+            Some("MOCK-SESSION-TOKEN".to_string()),
+            Some(expiry),
+            "test",
+        )
+    };
+
+    let long_lived = Credentials::from_keys("MOCK-ACCESS-KEY", "MOCK-SECRET-KEY", None);
+    assert_eq!(
+        token_expires_in(&long_lived, now).unwrap(),
+        Duration::from_secs(900)
+    );
+
+    let expire_in_an_hour = credentials_expiring_at(now + Duration::from_secs(3600));
+    assert_eq!(
+        token_expires_in(&expire_in_an_hour, now).unwrap(),
+        Duration::from_secs(900)
+    );
+
+    let expire_in_600_7_secs = credentials_expiring_at(now + Duration::from_millis(600_700));
+    assert_eq!(
+        token_expires_in(&expire_in_600_7_secs, now).unwrap(),
+        Duration::from_secs(600)
+    );
+
+    let expire_in_1_sec = credentials_expiring_at(now + Duration::from_secs(1));
+    assert_eq!(
+        token_expires_in(&expire_in_1_sec, now).unwrap(),
+        Duration::from_secs(1)
+    );
+
+    let expire_in_999_ms = credentials_expiring_at(now + Duration::from_millis(999));
+    assert!(token_expires_in(&expire_in_999_ms, now).is_err());
+
+    let expired = credentials_expiring_at(now - Duration::from_secs(1));
+    assert!(token_expires_in(&expired, now).is_err());
+}
+
+#[tokio::test]
+async fn test_construct_auth_token_with_expiring_credentials() {
+    let credentials_expiry = SystemTime::now() + Duration::from_secs(600);
+    let mock_creds = Credentials::new(
+        "MOCK-ACCESS-KEY",
+        "MOCK-SECRET-KEY",
+        Some("MOCK-SESSION-TOKEN".to_string()),
+        Some(credentials_expiry),
+        "test",
+    );
+
+    let (token, expiry_ms) = construct_auth_token(TEST_REGION, mock_creds.clone())
+        .await
+        .unwrap();
+
+    assert!(verify_auth_token(token, expiry_ms, &mock_creds) < 600);
+    let credentials_expiry_ms = credentials_expiry
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64;
+    assert!(expiry_ms <= credentials_expiry_ms);
+}
+
+#[tokio::test]
+async fn test_construct_auth_token_with_expired_credentials() {
+    let mock_creds = Credentials::new(
+        "MOCK-ACCESS-KEY",
+        "MOCK-SECRET-KEY",
+        Some("MOCK-SESSION-TOKEN".to_string()),
+        Some(SystemTime::now() - Duration::from_secs(1)),
+        "test",
+    );
+
+    assert!(construct_auth_token(TEST_REGION, mock_creds).await.is_err());
+}
+
+// Verifies the token and returns its `X-Amz-Expires` in seconds.
+fn verify_auth_token(token: String, expiry_ms: i64, cred: &Credentials) -> i64 {
     assert_ne!(expiry_ms, 0);
 
     let decoded_signed_url_bytes = BASE64_URL_SAFE_NO_PAD.decode(token).unwrap();
@@ -103,7 +184,6 @@ fn verify_auth_token(token: String, expiry_ms: i64, cred: &Credentials) {
         params.get("X-Amz-Algorithm"),
         Some(&Cow::Borrowed("AWS4-HMAC-SHA256"))
     );
-    assert_eq!(params.get("X-Amz-Expires"), Some(&Cow::Borrowed("900")));
     assert_eq!(
         params.get("X-Amz-Security-Token").cloned(),
         cred.session_token().map(|token| Cow::Borrowed(token))
@@ -135,5 +215,7 @@ fn verify_auth_token(token: String, expiry_ms: i64, cred: &Credentials) {
     assert_eq!(expiry_ms, signing_time_ms + expiry_duration_ms);
 
     let current_ms = Utc::now().timestamp_millis();
-    assert!(expiry_ms > current_ms)
+    assert!(expiry_ms > current_ms);
+
+    expiry_duration_seconds
 }
